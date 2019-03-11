@@ -19,8 +19,12 @@ static unsigned int icmp_hookfn(void *priv, struct sk_buff *skb, const struct nf
 	
 	iph = ip_hdr(skb);
 	if(iph->protocol == IPPROTO_ICMP) {
-		printk(KERN_INFO "ICMP PACKET RECIEVED!\n");
 		icmph = icmp_hdr(skb);
+		if(icmph->type == ICMP_ECHOREPLY){
+			printk(KERN_INFO "ICMP ECHO REPLY PACKET RECIEVED!\n");	
+			printk(KERN_DEBUG "ICMP id = %d\n", icmph->un.echo.id);
+			printk(KERN_DEBUG "ICMP sequence = %d\n", icmph->un.echo.sequence);
+		}
 	}
 
 	
@@ -31,7 +35,7 @@ int init_module(void)
 {
 	nfho.hook = (nf_hookfn*) icmp_hookfn;  // hook function
 	nfho.hooknum = NF_INET_LOCAL_IN;  // the packets destined for this machine
-	nfho.pf = PF_INET;  // ipv4 protocol id  
+	nfho.pf = NFPROTO_IPV4;  // ipv4 protocol id  
 	nfho.priority = NF_IP_PRI_FIRST;  // priority of hook
 	
 	nf_register_net_hook(&init_net, &nfho);
