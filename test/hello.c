@@ -17,6 +17,7 @@
 #include <linux/inet.h>
 #include <linux/if_arp.h>
 #include <linux/etherdevice.h>
+#include <net/ip.h>
 
 unsigned int inet_addr(char *str)
 {
@@ -42,27 +43,28 @@ int init_module(void)
 
 	int header_size = ETH_HLEN + icmp_hlen + ip_hlen; // 14+8+20=42bytes
 
-	//struct sk_buff *skb = alloc_skb(1500, GFP_KERNEL);  // allocate memory for skb
+//	struct sk_buff *skb = alloc_skb(1500, GFP_KERNEL);  // allocate memory for skb
 	struct sk_buff *skb = netdev_alloc_skb(net_dev, 1500);
 	skb_reserve(skb, header_size); 
 
 	/* icmp header */
-	struct icmphdr *icmph = (struct icmphdr*) skb_push(skb, icmp_hlen);
+	struct icmphdr *icmph = (struct icmphdr*) skb_push(skb, icmp_hlen + sizeof(struct icmphdr));
 	icmph->type = ICMP_ECHO;  // icmp echo request
 	icmph->code = 0;
-	icmph->un.echo.sequence = htons(0);
+	icmph->un.echo.sequence = htons(256);
         icmph->un.echo.id = htons(current->pid);
+	
+	skb_reset_network_header(skb);
 
-	skb_reset_transport_header(skb);
 	/* ip header */
-	struct iphdr* iph = (struct iphdr*) skb_push(skb, ip_hlen); 
+	struct iphdr* iph = (struct iphdr*) skb_push(skb, ip_hlen);
 	iph->ihl = 5; 
 	iph->version = 4;
   
 	iph->tos = 0;  // type of service
-	iph->tot_len = htons(ip_hlen); 
+	iph->tot_len = htons(84); 
 	iph->id = htons(123);
-	iph->frag_off = htons(0);
+	iph->frag_off = htons(IP_DF);
 	iph->ttl = 64; // time to live
 	iph->protocol = IPPROTO_ICMP; //  icmp protocol
 
@@ -90,11 +92,17 @@ int init_module(void)
 	skb->pkt_type = PACKET_OUTGOING;
 	skb->priority = 0;
 
-	/*struct ethhdr* eth_test = eth_hdr(skb);
-	printk(KERN_INFO "eth  %u", eth_test->h_proto);*/
+	struct icmphdr *icmph_test = icmp_hdr(skb); 
+	printk(KERN_INFO "icmph_test %d", icmph_test->type);
+	printk(KERN_INFO "skb len %d", skb->len);
+	printk(KERN_INFO "skb data len %d", skb->data_len);
+	printk(KERN_INFO "skb network_header %d", skb->network_header);
+	printk(KERN_INFO "skb transport_header %d", skb->transport_header);
+	struct ethhdr* eth_test = eth_hdr(skb);
+	printk(KERN_INFO "eth  %u", eth_test->h_proto);
 
-	if(dev_queue_xmit(skb)==NET_XMIT_SUCCESS)
-		printk(KERN_INFO "dev_queue_xmit success!");
+	/*if(dev_queue_xmit(skb)==NET_XMIT_SUCCESS)
+		printk(KERN_INFO "dev_queue_xmit success!");*/
 	
 	kfree_skb(skb);
 	return 0;
