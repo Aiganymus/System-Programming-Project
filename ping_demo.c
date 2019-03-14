@@ -8,50 +8,33 @@
 #include <linux/ip.h>
 #include <linux/icmp.h>
 
-#include <linux/netdevice.h>
-
-#include <linux/types.h>
-#include <linux/sched.h>
-#include <linux/mm.h>
-#include <linux/fcntl.h>
-#include <linux/socket.h>
-#include <linux/in.h>
-#include <linux/inet.h>
-#include <linux/if_arp.h>
-#include <linux/etherdevice.h>
-
+#include <linux/kfifo.h>
+#include <linux/slab.h>
 
 static struct nf_hook_ops nfho;
+static struct kfifo fifo;
 
+struct packet_info {
+	u32 *source_address;
+	int type;
+};
 
 static unsigned int icmp_hookfn(void *priv, struct sk_buff *skb, const struct nf_hook_state *state) {
 	if(!skb)
-		return NF_DROP;
+		return NF_ACCEPT;
 	
-	struct iphdr *iph;
-	struct icmphdr *icmph;
-	
-	iph = ip_hdr(skb);
+	struct iphdr *iph = ip_hdr(skb);
+
 	if(iph->protocol == IPPROTO_ICMP) {
-		icmph = icmp_hdr(skb);
-		if(icmph->type == ICMP_ECHOREPLY){
-			printk(KERN_INFO "ICMP ECHO REPLY PACKET RECIEVED!\n");	
+		struct icmphdr *icmph = icmp_hdr(skb);
 
-			printk(KERN_INFO "net device in %s", state->in->name);
-			printk(KERN_INFO "net device out %s", state->out->name);
-
-			printk(KERN_DEBUG "ICMP id = %d\n", icmph->un.echo.id);
-			printk(KERN_DEBUG "ICMP sequence = %d\n", icmph->un.echo.sequence);	
-			printk(KERN_INFO "-------------------------------");
-		}
 		if(icmph->type == ICMP_ECHO){
 			printk(KERN_INFO "ICMP ECHO REQUEST PACKET RECIEVED!\n");	
+			struct packet_info *packet_info = kmalloc(sizeof(struct packet_info), GFP_KERNEL);
+			packet_info->source_address = &iph->saddr;
+			packet_info->type = icmph->type;
 
-			printk(KERN_INFO "net device in %s", state->in->name);
-			printk(KERN_INFO "net device out %s", state->out->name);
-
-			printk(KERN_DEBUG "ICMP id = %d\n", icmph->un.echo.id);
-			printk(KERN_DEBUG "ICMP sequence = %d\n", icmph->un.echo.sequence);	
+			//printk(KERN_INFO "IP addres = %pI4\n", val->source_address);
 			printk(KERN_INFO "-------------------------------");
 		}
 	}
@@ -62,12 +45,16 @@ static unsigned int icmp_hookfn(void *priv, struct sk_buff *skb, const struct nf
 
 int init_module(void)
 {
+	int ret;
+	ret = kfifo_alloc(&fifo, PAGE_SIZE, GFP_KERNEL); 
+	if (ret)
+		return ret;
 	nfho.hook = (nf_hookfn*) icmp_hookfn;  // hook function
 	nfho.hooknum = NF_INET_LOCAL_IN;  // the packets destined for this machine
-	nfho.pf = NFPROTO_IPV4;  // ipv4 protocol id  
+	nfho.pf = NFPROTO_IPV4;  // accept ipv4 protocol  
 	nfho.priority = NF_IP_PRI_FIRST;  // priority of hook
 	
-	nf_register_net_hook(&init_net, &nfho);
+	nf_register_net_hook(&init_net, &nfho);  // init_net - network namespace
 
 	printk(KERN_INFO "Hello world!\n");
 	
@@ -80,3 +67,8 @@ void cleanup_module(void)
 	
 	printk(KERN_INFO "Goodbye world!\n");
 }
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Aiganym");
+MODULE_DESCRIPTION("Simple module for printing ICMP REQUEST information.");
+
